@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [Unit]
 Description=Start FreePBX
 
@@ -8,4 +9,16 @@ Type=oneshot
 RemainAfterExit=yes
 
 [Install]
+=======
+[Unit]
+Description=Start FreePBX
+
+[Service]
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/sbin/fwconsole start
+Type=oneshot
+RemainAfterExit=yes
+
+[Install]
+>>>>>>> 410178f (update asterisk to 21 and freepbx to 17)
 WantedBy=multi-user.target

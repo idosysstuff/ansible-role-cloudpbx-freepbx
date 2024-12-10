@@ -1,4 +1,5 @@
 ---
+<<<<<<< HEAD
 # Setup ODBC connector
 -
   name: Download MariaDB Connector
@@ -43,6 +44,42 @@
     name: root
     host: "{{ item }}"
     password: "{{ db_root_pass }}"
+=======
+-
+  name: Download MariaDB Connector
+  get_url:
+    headers:
+      user-agent: curl/7.81.0
+    url: https://downloads.mysql.com/archives/get/p/10/file/mysql-connector-odbc-5.3.10-linux-ubuntu17.10-x86-64bit.tar.gz
+    dest: /tmp
+-
+  name: Untar MariaDB Connector
+  unarchive:
+    src: /tmp/mysql-connector-odbc-5.3.10-linux-ubuntu17.10-x86-64bit.tar.gz
+    dest: /usr/src
+    remote_src: yes
+-
+  name: Copy ODBC Connector lib files
+  copy:
+    remote_src: yes
+    src: /usr/src/mysql-connector-odbc-5.3.10-linux-ubuntu17.10-x86-64bit/lib/
+    dest: /usr/lib/odbc
+-
+  name: Change DB listener from localhost to all interfaces
+  replace:
+    path: '/etc/mysql/mariadb.conf.d/50-server.cnf'
+    regexp: '127.0.0.1'
+    replace: '0.0.0.0'
+-
+  name: Secure DB - Set root password
+  mysql_user:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    login_user: root
+    login_password: "{{db_root_pass}}"
+    name: root
+    password: "{{db_root_pass}}"
+    host: "{{item}}"
+>>>>>>> 410178f (update asterisk to 21 and freepbx to 17)
     state: present
   with_items:
     - 127.0.0.1
@@ -50,6 +87,7 @@
     - localhost
 -
   name: Secure DB - delete anonymous users
+<<<<<<< HEAD
   community.mysql.mysql_user:
     login_unix_socket: /var/run/mysqld/mysqld.sock
     login_user: "root"
@@ -90,3 +128,23 @@
   ansible.builtin.systemd:
     name: mysql
     state: restarted
+=======
+  mysql_user:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    login_user: root
+    login_password: "{{db_root_pass}}"
+    name: ""
+    host: "{{item}}"
+    state: absent
+  with_items:
+    - localhost
+    - "{{ansible_nodename}}"
+-
+  name: Secure DB - Remove Test DB
+  mysql_db:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    login_user: root
+    login_password: "{{db_root_pass}}"
+    name: test
+    state: absent
+>>>>>>> 410178f (update asterisk to 21 and freepbx to 17)
