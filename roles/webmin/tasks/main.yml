@@ -1,22 +1,3 @@
-<<<<<<< HEAD
----
--
-  name: Add Apt Key
-  ansible.builtin.apt_key:
-    url: http://www.webmin.com/jcameron-key.asc
-    state: present
--
-  name: Add Webmin Repo
-  ansible.builtin.apt_repository:
-    repo: deb http://download.webmin.com/download/repository sarge contrib
-    state: present
--
-  name: Install webmin
-  ansible.builtin.apt:
-    name: webmin
-    update_cache: true
-    state: present
-=======
 ---
 - 
   name: Add Apt Key
@@ -34,4 +15,3 @@
     name: webmin
     update_cache: yes
     state: present
->>>>>>> 410178f (update asterisk to 21 and freepbx to 17)

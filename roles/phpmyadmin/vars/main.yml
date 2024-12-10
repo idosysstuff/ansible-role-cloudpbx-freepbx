@@ -1,13 +1,5 @@
-<<<<<<< HEAD
----
-packages:
-  - phpmyadmin
-  - php-mbstring
-  - gettext
-=======
 ---
 packages:
   - phpmyadmin
   - php8.2-mbstring
   - php8.2-gettext
->>>>>>> 410178f (update asterisk to 21 and freepbx to 17)
