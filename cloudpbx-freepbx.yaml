@@ -8,7 +8,7 @@
     db_root_pass: "{{ lookup('env','DB_ROOT_PASS') }}"
     fpbx_ver: 17.0
     ast_ver: 21
-    nodejs_ver: 18.x
+    nodejs_ver: 18
   roles:
     - sysprep
     - db_prep
