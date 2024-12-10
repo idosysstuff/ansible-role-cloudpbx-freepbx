@@ -26,7 +26,7 @@
   register: 'ast_install_dir'
 - 
   name: "Make Libvpb1 install non-interactive"
-  shell: echo 'libvpb1 libvpb1/countrycode string 381' | sudo debconf-set-selections -v
+  shell: set -o pipefail | echo 'libvpb1 libvpb1/countrycode string 381' | sudo debconf-set-selections -v
 -
   name: Install Asterisk Prereqisites
   shell: 
