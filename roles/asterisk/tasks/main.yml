@@ -1,16 +1,11 @@
 ---
-- name: Define base Asterisk version variables
+- name: Define base Asterisk version variable
   ansible.builtin.set_fact:
     asterisk_version: "{{ ast_ver }}"
 
-    asterisk_version_full: "{{ ast_ver }}.1.0"
-
-- name: Define derived Asterisk paths and URLs
+- name: Define Asterisk download URL and archive path
   ansible.builtin.set_fact:
     asterisk_download_url: "https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ asterisk_version }}-current.tar.gz"
-
-    asterisk_src_dir: "/usr/src/asterisk-{{ asterisk_version_full }}"
-
     asterisk_archive: "/usr/src/asterisk-{{ asterisk_version }}-current.tar.gz"
 
 - name: Download Asterisk source tarball
@@ -23,39 +18,39 @@
   retries: 3
   delay: 5
 
-- name: Create Asterisk source directory (using assumed name)
-  ansible.builtin.file:
-    path: "{{ asterisk_src_dir }}"
-    state: directory
-    mode: "0755"
-
 - name: Unpack Asterisk source tarball
   ansible.builtin.unarchive:
     src: "{{ asterisk_archive }}"
     dest: /usr/src
     remote_src: yes
-
-    creates: "{{ asterisk_src_dir }}/configure"
   register: unarchive_result
+  when: download_result is succeeded
 
-- name: Check if expected source directory exists
-  ansible.builtin.stat:
-    path: "{{ asterisk_src_dir }}/configure"
-  register: src_dir_stat
+- name: Find the extracted Asterisk source directory
+  ansible.builtin.find:
+    paths: /usr/src
+
+    patterns: "asterisk-{{ asterisk_version }}.*"
+    file_type: directory
+  register: find_asterisk_dir
   when: unarchive_result is changed
 
-- name: Fail if expected source directory not found after extraction
+- name: Fail if exactly one Asterisk source directory is not found
   ansible.builtin.fail:
-    msg: "Asterisk source directory '{{ asterisk_src_dir }}' not found after extraction. The actual extracted directory name might differ from the expected '{{ asterisk_version_full }}'. Check /usr/src/asterisk-* manually. Consider adjusting 'asterisk_version_full' or using '-current' download URL with dynamic directory detection."
-  when:
-    - unarchive_result is changed
-    - not src_dir_stat.stat.exists
+    msg: "Could not find exactly one Asterisk source directory matching '/usr/src/asterisk-{{ asterisk_version }}.*'. Found: {{ find_asterisk_dir.files | map(attribute='path') | list }}"
+  when: find_asterisk_dir.matched != 1
+
+- name: Set fact for the actual Asterisk source directory path
+  ansible.builtin.set_fact:
+    actual_asterisk_src_dir: "{{ find_asterisk_dir.files[0].path }}"
+  when: find_asterisk_dir.matched == 1
 
 - name: Run Asterisk configure script
   ansible.builtin.command:
     cmd: ./configure --with-jansson-bundled --with-pjproject-bundled
-    chdir: "{{ asterisk_src_dir }}"
-    creates: "{{ asterisk_src_dir }}/Makefile"
+    chdir: "{{ actual_asterisk_src_dir }}"
+    creates: "{{ actual_asterisk_src_dir }}/Makefile"
+  when: actual_asterisk_src_dir is defined
 
 - name: Run 'make menuselect' options (automated)
   ansible.builtin.command:
@@ -82,33 +77,37 @@
       --enable codec_opus
       --disable BUILD_NATIVE
       --force
-
-    chdir: "{{ asterisk_src_dir }}"
-    creates: "{{ asterisk_src_dir }}/menuselect.makeopts"
+    chdir: "{{ actual_asterisk_src_dir }}"
+    creates: "{{ actual_asterisk_src_dir }}/menuselect.makeopts"
+  when: actual_asterisk_src_dir is defined
 
 - name: Compile Asterisk (make)
   ansible.builtin.command:
     cmd: make -j {{ ansible_processor_vcpus | default(2) }}
-    chdir: "{{ asterisk_src_dir }}"
-    creates: "{{ asterisk_src_dir }}/main/asterisk"
+    chdir: "{{ actual_asterisk_src_dir }}"
+    creates: "{{ actual_asterisk_src_dir }}/main/asterisk"
+  when: actual_asterisk_src_dir is defined
 
 - name: Install Asterisk (make install)
   ansible.builtin.command:
     cmd: make install
-    chdir: "{{ asterisk_src_dir }}"
+    chdir: "{{ actual_asterisk_src_dir }}"
     creates: /usr/sbin/asterisk
+  when: actual_asterisk_src_dir is defined
 
 - name: Install Asterisk sample configuration files (optional but recommended)
   ansible.builtin.command:
     cmd: make samples
-    chdir: "{{ asterisk_src_dir }}"
+    chdir: "{{ actual_asterisk_src_dir }}"
     creates: /etc/asterisk/asterisk.conf.sample
+  when: actual_asterisk_src_dir is defined
 
 - name: Install Asterisk init scripts/systemd unit (make config)
   ansible.builtin.command:
     cmd: make config
-    chdir: "{{ asterisk_src_dir }}"
+    chdir: "{{ actual_asterisk_src_dir }}"
     creates: /lib/systemd/system/asterisk.service
+  when: actual_asterisk_src_dir is defined
 
 - name: Set ownership for Asterisk directories
   ansible.builtin.file:
