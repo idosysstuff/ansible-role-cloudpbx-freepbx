@@ -26,25 +26,25 @@
       [mysqld]
 
       sql_mode=''
-    marker: "
+    marker:
     insertafter: '^\[mysqld\]'
   notify: Restart mariadb
-
 
 - name: Set MariaDB root password for localhost access using SQL query (ALTER USER)
   community.mysql.mysql_query:
     login_unix_socket: /var/run/mysqld/mysqld.sock
     query: "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ db_root_pass }}';"
   register: root_password_set_alter
-  changed_when: root_password_set_alter.rowcount | default(0) > 0 or root_password_set_alter.query_affected_rows | default(0) > 0
 
+  changed_when: >
+    (root_password_set_alter.rowcount is defined and root_password_set_alter.rowcount[0] | default(0) > 0) or
+    (root_password_set_alter.query_affected_rows is defined and root_password_set_alter.query_affected_rows[0] | default(0) > 0)
 
 - name: Flush MariaDB privileges after setting root password
   community.mysql.mysql_query:
     login_unix_socket: /var/run/mysqld/mysqld.sock
     query: "FLUSH PRIVILEGES;"
   when: root_password_set_alter.changed
-
 
 - name: Remove anonymous MariaDB users
   community.mysql.mysql_user:
