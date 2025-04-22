@@ -1,15 +1,17 @@
 ---
-- name: Define Asterisk version variables
-  set_fact:
+- name: Define base Asterisk version variables
+  ansible.builtin.set_fact:
     asterisk_version: "{{ ast_ver }}"
+
     asterisk_version_full: "{{ ast_ver }}.1.0"
-    # You might need to dynamically find the latest point release, e.g., 21.x.y
-    # Or hardcode the exact version you want to install, e.g., 21.1.0
-    asterisk_download_url: "https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ ast_ver }}-current.tar.gz"
-    # Alternative: Use specific version URL if needed
-    # asterisk_download_url: "http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ asterisk_version_full }}.tar.gz"
+
+- name: Define derived Asterisk paths and URLs
+  ansible.builtin.set_fact:
+    asterisk_download_url: "https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ asterisk_version }}-current.tar.gz"
+
     asterisk_src_dir: "/usr/src/asterisk-{{ asterisk_version_full }}"
-    asterisk_archive: "/usr/src/asterisk-{{ ast_ver }}-current.tar.gz"
+
+    asterisk_archive: "/usr/src/asterisk-{{ asterisk_version }}-current.tar.gz"
 
 - name: Download Asterisk source tarball
   ansible.builtin.get_url:
@@ -21,7 +23,7 @@
   retries: 3
   delay: 5
 
-- name: Create Asterisk source directory
+- name: Create Asterisk source directory (using assumed name)
   ansible.builtin.file:
     path: "{{ asterisk_src_dir }}"
     state: directory
@@ -32,7 +34,22 @@
     src: "{{ asterisk_archive }}"
     dest: /usr/src
     remote_src: yes
+
     creates: "{{ asterisk_src_dir }}/configure"
+  register: unarchive_result
+
+- name: Check if expected source directory exists
+  ansible.builtin.stat:
+    path: "{{ asterisk_src_dir }}/configure"
+  register: src_dir_stat
+  when: unarchive_result is changed
+
+- name: Fail if expected source directory not found after extraction
+  ansible.builtin.fail:
+    msg: "Asterisk source directory '{{ asterisk_src_dir }}' not found after extraction. The actual extracted directory name might differ from the expected '{{ asterisk_version_full }}'. Check /usr/src/asterisk-* manually. Consider adjusting 'asterisk_version_full' or using '-current' download URL with dynamic directory detection."
+  when:
+    - unarchive_result is changed
+    - not src_dir_stat.stat.exists
 
 - name: Run Asterisk configure script
   ansible.builtin.command:
@@ -43,31 +60,29 @@
 - name: Run 'make menuselect' options (automated)
   ansible.builtin.command:
     cmd: >
-      make menuselect.makeopts
+      make menuselect.makeopts &&
       menuselect/menuselect
       --enable CORE-SOUNDS-EN-ULAW
       --enable MOH-OPSOUND-ULAW
       --enable EXTRA-SOUNDS-EN-ULAW
       --enable app_macro
       --enable format_mp3
-      --enable chan_ooh323 # Only if you need H.323 support
       --enable res_config_odbc
       --enable res_odbc
       --enable cdr_adaptive_odbc
       --enable cel_odbc
-      --enable res_calendar_caldav # If needed
-      --enable res_calendar_ews # If needed
-      --enable res_calendar_icalendar # If needed
+      --enable res_calendar_caldav
+      --enable res_calendar_ews
+      --enable res_calendar_icalendar
       --enable res_crypto
       --enable res_http_websocket
       --enable res_pjsip_pubsub
       --enable res_pjsip_transport_websocket
       --enable res_srtp
-      --enable chan_dahdi # Only if you have DAHDI hardware/drivers installed
-      --enable codec_opus # Recommended modern codec
-      --enable codec_g729 # Requires separate license/binary usually
-      --disable BUILD_NATIVE # Avoids optimizing for specific CPU, better portability
-      --force # Apply changes
+      --enable codec_opus
+      --disable BUILD_NATIVE
+      --force
+
     chdir: "{{ asterisk_src_dir }}"
     creates: "{{ asterisk_src_dir }}/menuselect.makeopts"
 
@@ -106,7 +121,6 @@
     - /etc/asterisk
     - /var/lib/asterisk
     - /var/log/asterisk
-    - /var/run/asterisk
     - /var/spool/asterisk
 
 - name: Ensure /var/run/asterisk exists
@@ -133,7 +147,6 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Reload asterisk
 
 - name: Enable and start Asterisk service
   ansible.builtin.systemd:
