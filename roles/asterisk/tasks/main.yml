@@ -52,10 +52,18 @@
     creates: "{{ actual_asterisk_src_dir }}/Makefile"
   when: actual_asterisk_src_dir is defined
 
-- name: Run 'make menuselect' options (automated)
+- name: Generate initial menuselect options file (make menuselect.makeopts)
+  ansible.builtin.command:
+    cmd: make menuselect.makeopts
+    chdir: "{{ actual_asterisk_src_dir }}"
+
+    creates: "{{ actual_asterisk_src_dir }}/menuselect.makeopts"
+  when: actual_asterisk_src_dir is defined
+  changed_when: false
+
+- name: Apply menuselect options using the script
   ansible.builtin.command:
     cmd: >
-      make menuselect.makeopts &&
       menuselect/menuselect
       --enable CORE-SOUNDS-EN-ULAW
       --enable MOH-OPSOUND-ULAW
@@ -78,8 +86,10 @@
       --disable BUILD_NATIVE
       --force
     chdir: "{{ actual_asterisk_src_dir }}"
-    creates: "{{ actual_asterisk_src_dir }}/menuselect.makeopts"
   when: actual_asterisk_src_dir is defined
+
+  register: menuselect_script_run
+  changed_when: menuselect_script_run.rc == 0
 
 - name: Compile Asterisk (make)
   ansible.builtin.command:
