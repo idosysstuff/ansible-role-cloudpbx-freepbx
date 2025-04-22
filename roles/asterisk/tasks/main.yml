@@ -1,145 +1,143 @@
 ---
--
-  name: Download Asterisk {{ast_ver}}
-  get_url:
-    url: http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ast_ver}}-current.tar.gz
-    dest: /usr/src
--
-  name: Untar Asterisk tarball
-  unarchive:
-    src: /usr/src/asterisk-{{ast_ver}}-current.tar.gz
+- name: Define Asterisk version variables
+  set_fact:
+    asterisk_version: "{{ ast_ver }}"
+    asterisk_version_full: "{{ ast_ver }}.1.0"
+    # You might need to dynamically find the latest point release, e.g., 21.x.y
+    # Or hardcode the exact version you want to install, e.g., 21.1.0
+    asterisk_download_url: "https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ ast_ver }}-current.tar.gz"
+    # Alternative: Use specific version URL if needed
+    # asterisk_download_url: "http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{{ asterisk_version_full }}.tar.gz"
+    asterisk_src_dir: "/usr/src/asterisk-{{ asterisk_version_full }}"
+    asterisk_archive: "/usr/src/asterisk-{{ ast_ver }}-current.tar.gz"
+
+- name: Download Asterisk source tarball
+  ansible.builtin.get_url:
+    url: "{{ asterisk_download_url }}"
+    dest: "{{ asterisk_archive }}"
+    mode: "0644"
+  register: download_result
+  until: download_result is succeeded
+  retries: 3
+  delay: 5
+
+- name: Create Asterisk source directory
+  ansible.builtin.file:
+    path: "{{ asterisk_src_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Unpack Asterisk source tarball
+  ansible.builtin.unarchive:
+    src: "{{ asterisk_archive }}"
     dest: /usr/src
     remote_src: yes
--
-  name: Remove Asterisk tarball
-  file:
-    path: /usr/src/asterisk-{{ast_ver}}-current.tar.gz
-    state: absent
--
-  name: "Find extracted Asterisk {{ast_ver}} folder name "
-  find:
-    paths: /usr/src
-    file_type: directory
-    recurse: no
-    patterns: ^asterisk.*$
-    use_regex: yes
-  register: 'ast_install_dir'
-- 
-  name: "Make Libvpb1 install non-interactive"
-  shell: set -o pipefail | echo 'libvpb1 libvpb1/countrycode string 381' | sudo debconf-set-selections -v
--
-  name: Install Asterisk Prereqisites
-  shell: 
-    cmd: "{{item}}"
-    chdir: "{{ast_install_dir.files[0].path}}/contrib/scripts"
-  with_items:
-    - ./get_mp3_source.sh
-    - ./install_prereq install
--
-  name: Run configure asterisk scripts
-  shell: 
-    cmd: ./configure --with-pjproject-bundled --with-jansson-bundled
-    chdir: "{{ast_install_dir.files[0].path}}"
--
-  name: Select make options
-  shell: 
-    cmd: "{{item}}"
-    chdir: "{{ast_install_dir.files[0].path}}"
-  with_items:
-    - make menuselect.makeopts
-    - menuselect/menuselect --enable res_config_mysql --enable format_mp3 menuselect.makeopts
--
-  name: Compile and Install Asterisk
-  shell: 
-    cmd: "{{item}}"
-    chdir: "{{ast_install_dir.files[0].path}}"
-  with_items:
-    - make
-    - contrib/scripts/get_mp3_source.sh
-    - make install
-    - make config
-    - ldconfig
-    - update-rc.d -f asterisk remove
--
-  name: Add asterisk users
-  user:
-    name: asterisk
-    comment: Asterisk user
--
-  name: Seting folder permitions for asterisk user
-  file:
-    path: "{{item}}"
+    creates: "{{ asterisk_src_dir }}/configure"
+
+- name: Run Asterisk configure script
+  ansible.builtin.command:
+    cmd: ./configure --with-jansson-bundled --with-pjproject-bundled
+    chdir: "{{ asterisk_src_dir }}"
+    creates: "{{ asterisk_src_dir }}/Makefile"
+
+- name: Run 'make menuselect' options (automated)
+  ansible.builtin.command:
+    cmd: >
+      make menuselect.makeopts
+      menuselect/menuselect
+      --enable CORE-SOUNDS-EN-ULAW
+      --enable MOH-OPSOUND-ULAW
+      --enable EXTRA-SOUNDS-EN-ULAW
+      --enable app_macro
+      --enable format_mp3
+      --enable chan_ooh323 # Only if you need H.323 support
+      --enable res_config_odbc
+      --enable res_odbc
+      --enable cdr_adaptive_odbc
+      --enable cel_odbc
+      --enable res_calendar_caldav # If needed
+      --enable res_calendar_ews # If needed
+      --enable res_calendar_icalendar # If needed
+      --enable res_crypto
+      --enable res_http_websocket
+      --enable res_pjsip_pubsub
+      --enable res_pjsip_transport_websocket
+      --enable res_srtp
+      --enable chan_dahdi # Only if you have DAHDI hardware/drivers installed
+      --enable codec_opus # Recommended modern codec
+      --enable codec_g729 # Requires separate license/binary usually
+      --disable BUILD_NATIVE # Avoids optimizing for specific CPU, better portability
+      --force # Apply changes
+    chdir: "{{ asterisk_src_dir }}"
+    creates: "{{ asterisk_src_dir }}/menuselect.makeopts"
+
+- name: Compile Asterisk (make)
+  ansible.builtin.command:
+    cmd: make -j {{ ansible_processor_vcpus | default(2) }}
+    chdir: "{{ asterisk_src_dir }}"
+    creates: "{{ asterisk_src_dir }}/main/asterisk"
+
+- name: Install Asterisk (make install)
+  ansible.builtin.command:
+    cmd: make install
+    chdir: "{{ asterisk_src_dir }}"
+    creates: /usr/sbin/asterisk
+
+- name: Install Asterisk sample configuration files (optional but recommended)
+  ansible.builtin.command:
+    cmd: make samples
+    chdir: "{{ asterisk_src_dir }}"
+    creates: /etc/asterisk/asterisk.conf.sample
+
+- name: Install Asterisk init scripts/systemd unit (make config)
+  ansible.builtin.command:
+    cmd: make config
+    chdir: "{{ asterisk_src_dir }}"
+    creates: /lib/systemd/system/asterisk.service
+
+- name: Set ownership for Asterisk directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
     owner: asterisk
     group: asterisk
-    state: directory
     recurse: yes
   with_items:
-    - /var/run/asterisk
     - /etc/asterisk
     - /var/lib/asterisk
     - /var/log/asterisk
+    - /var/run/asterisk
     - /var/spool/asterisk
-    - /usr/lib/asterisk
--
-  name: Remove default web folder
-  file:
-    path: /var/www/html
-    state: absent
--
-  name: "Find php version folder name "
-  find:
-    paths: /etc/php
-    file_type: directory
-    recurse: no
-    patterns: ^8.*$
-    use_regex: yes
-  register: 'php_ver'
--
-  name: Making some Apache config changes
-  lineinfile:
-    path: "{{item.path}}"
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-    -
-      path: "{{php_ver.files[0].path}}/apache2/php.ini"
-      regexp: "upload_max_filesize ="
-      line: "upload_max_filesize = 20M"
-    -
-      path: "{{php_ver.files[0].path}}/apache2/php.ini"
-      regexp: "memory_limit ="
-      line: "memory_limit = 256M"
-    -
-      path: /etc/apache2/envvars
-      regexp: export APACHE_RUN_USER=
-      line: export APACHE_RUN_USER=asterisk
-    -
-      path: /etc/apache2/envvars
-      regexp: export APACHE_RUN_GROUP=
-      line: export APACHE_RUN_GROUP=asterisk
--
-  name: Some more Apache changes
-  replace:
-    path: '/etc/apache2/apache2.conf'
-    regexp: 'AllowOverride None'
-    replace: 'AllowOverride All'
--
-  name: Enable Apache Rewrite Mod
-  shell: a2enmod rewrite
--
-  name: Restarting Apache Service
-  service:
-    name: apache2
-    state: restarted
--
-  name: Seting ODBC files
-  template:
-    src: "{{item.src}}"
-    dest: "{{item.dest}}"
-  with_items:
-    -
-      src: odbc.ini.j2
-      dest: /etc/odbc.ini
-    -
-      src: odbcinst.ini.j2
-      dest: /etc/odbcinst.ini
+
+- name: Ensure /var/run/asterisk exists
+  ansible.builtin.file:
+    path: /var/run/asterisk
+    state: directory
+    owner: asterisk
+    group: asterisk
+    mode: "0755"
+
+- name: Configure ODBC INI file
+  ansible.builtin.template:
+    src: odbc.ini.j2
+    dest: /etc/odbc.ini
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload asterisk
+
+- name: Configure ODBCINST INI file
+  ansible.builtin.template:
+    src: odbcinst.ini.j2
+    dest: /etc/odbcinst.ini
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload asterisk
+
+- name: Enable and start Asterisk service
+  ansible.builtin.systemd:
+    name: asterisk
+    enabled: yes
+    state: started
+    daemon_reload: yes

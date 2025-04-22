@@ -2,41 +2,48 @@
 packages:
   - build-essential
   - linux-headers-{{ ansible_kernel }}
+  - pkg-config
+  - automake
+  - autoconf
+  - libtool
+  - libtool-bin
   - openssh-server
+  - sudo
+  - git
+  - subversion
+  - curl
+  - wget
+  - dirmngr
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - vim
+  - expect
+  - cron
+  - logrotate
+  - xz-utils
   - apache2
   - mariadb-server
   - mariadb-client
-  - bison
-  - flex
   - php8.2
-  - php8.2-curl
   - php8.2-cli
-  - php8.2-pdo
-  - php8.2-mysql
-  - php8.2-gd
-  - php8.2-mbstring
-  - php8.2-intl
   - php8.2-common
-  - php8.2-xml
+  - php8.2-curl
+  - php8.2-gd
   - php8.2-intl
+  - php8.2-mbstring
+  - php8.2-mysql
+  - php8.2-odbc
+  - php8.2-pdo
+  - php8.2-xml
+  - php8.2-zip
   - php-pear
-  - curl
-  - sox
   - libncurses5-dev
   - libssl-dev
-  - mpg123
   - libxml2-dev
-  - libnewt-dev
-  - sqlite3
   - libsqlite3-dev
-  - pkg-config
-  - automake
-  - libtool
-  - autoconf
-  - git
-  - unixodbc-dev
-  - uuid
   - uuid-dev
+  - libjansson-dev
   - libasound2-dev
   - libogg-dev
   - libvorbis-dev
@@ -46,25 +53,21 @@ packages:
   - libneon27-dev
   - libsrtp2-dev
   - libspandsp-dev
-  - libjansson-dev
-  - sudo
-  - subversion
-  - libtool-bin
-  - python3-dev
+  - libedit-dev
+  - libgmime-3.0-dev
   - unixodbc
-  - dirmngr
-  - sendmail-bin
-  - sendmail
-  - nodejs
-  - xz-utils
-  - python3-pip
-  - python3-mysqldb
-  ## Needed for debconf-set-selections
-  - debconf-utils
-  - sngrep
+  - unixodbc-dev
+  - odbc-mariadb
+  - sox
+  - mpg123
   - lame
   - ffmpeg
-  - vim
-  - expect
-  - odbc-mariadb
-  - cron
+  - nodejs
+  - python3
+  - python3-pip
+  - python3-mysqldb
+  - python3-dev
+  - sendmail-bin
+  - sendmail
+  - sngrep
+  - debconf-utils

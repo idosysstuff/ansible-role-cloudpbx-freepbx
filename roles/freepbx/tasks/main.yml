@@ -1,75 +1,131 @@
 ---
--
-  name: Downloading FreePBX {{fpbx_ver}}
-  get_url:
-    url: http://mirror.freepbx.org/modules/packages/freepbx/freepbx-{{fpbx_ver}}-latest.tgz
-    dest: /usr/src
--
-  name: Unpacking FreePBX tarball
-  unarchive:
-    src: /usr/src/freepbx-{{fpbx_ver}}-latest.tgz
+- name: Download FreePBX tarball ({{ fpbx_ver }})
+  ansible.builtin.get_url:
+    url: "http://mirror.freepbx.org/modules/packages/freepbx/freepbx-{{ fpbx_ver }}-latest.tgz"
+    dest: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
+    mode: "0644"
+  register: download_result
+  until: download_result is succeeded
+  retries: 3
+  delay: 5
+
+- name: Create FreePBX source directory
+  ansible.builtin.file:
+    path: /usr/src/freepbx
+    state: directory
+    mode: "0755"
+
+- name: Unpack FreePBX tarball
+  ansible.builtin.unarchive:
+    src: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     dest: /usr/src
     remote_src: yes
--
-  name: Removing FreePBX tarball
-  file:
-    path: /usr/src/freepbx-{{fpbx_ver}}-latest.tgz
+    creates: /usr/src/freepbx/install
+
+- name: Remove FreePBX tarball after extraction
+  ansible.builtin.file:
+    path: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     state: absent
--
-  name: Creating some asterisk files
-  file:
-    path: /etc/asterisk/{{item}}.conf
+
+- name: Ensure Asterisk service is running before FreePBX install
+  ansible.builtin.systemd:
+    name: asterisk
+    state: started
+
+- name: Create potentially required empty Asterisk config files
+  ansible.builtin.file:
+    path: "/etc/asterisk/{{ item }}"
     state: touch
+    owner: asterisk
+    group: asterisk
+    mode: "0664"
   with_items:
-    - modules
-    - cdr
--
-  name: Starting FreePBX
-  shell:
-    cmd: "{{item}}"
+    - modules.conf
+    - cdr.conf
+
+- name: Run FreePBX installation script
+  ansible.builtin.command:
+    cmd: ./install -n --dbhost localhost --dbuser {{ db_fpbx_user }} --dbpass {{ db_fpbx_pass }} --dbname asterisk --cdrdbname asteriskcdrdb --dbport 3306 --user asterisk --group asterisk
     chdir: /usr/src/freepbx
+    creates: /etc/freepbx.conf
+  register: fpbx_install_result
+  failed_when: "'INSERT INTO notifications' not in fpbx_install_result.stdout and fpbx_install_result.rc != 0"
+
+- name: Set ownership and permissions using fwconsole
+  ansible.builtin.command:
+    cmd: fwconsole chown
+  register: fwconsole_chown
+  changed_when: "'Taking too long? Customize the chown command' in fwconsole_chown.stdout"
+  failed_when: fwconsole_chown.rc != 0
+
+- name: Install and enable standard/extended repos and core modules
+  ansible.builtin.command:
+    cmd: "fwconsole ma {{ item }}"
   with_items:
-    - ./start_asterisk start
-    - ./install -n --dbuser root --dbpass {{db_root_pass}}
-  # freepbx install script returns code 1 for successfull install
-  ignore_errors: true
--
-  name: Install FPBX Modules
-  shell: "{{item}}"
-  with_items:
-    - fwconsole ma enablerepo standard
-    - fwconsole ma enablerepo extended
-    - fwconsole ma downloadinstall arimanager
-    - fwconsole ma downloadinstall framework
-    - fwconsole ma downloadinstall filestore
-    - fwconsole ma downloadinstall calendar
-    - fwconsole ma downloadinstall announcement
-    - fwconsole ma downloadinstall asterisk-cli
-    - fwconsole ma downloadinstall asteriskinfo
-    - fwconsole ma downloadinstall backup
-    - fwconsole ma downloadinstall iaxsettings
-    - fwconsole ma downloadinstall configedit
-    - fwconsole ma downloadinstall ivr
-    - fwconsole ma downloadinstall miscdests
-    - fwconsole ma downloadinstall outroutemsg
-    - fwconsole ma downloadinstall timeconditions
-    - fwconsole ma downloadinstall queues
-    - fwconsole reload
-    - fwconsole restart
--
-  name: Create FreePBX Startup service
-  template:
+    - enable repo standard
+    - enable repo extended
+    - downloadinstall core
+    - downloadinstall framework
+    - downloadinstall sysadmin
+    - downloadinstall userman
+    - downloadinstall pm2
+    - downloadinstall certman
+    - downloadinstall api
+    - downloadinstall ucp
+    - downloadinstall announcements
+    - downloadinstall backup
+    - downloadinstall blacklist
+    - downloadinstall callrecording
+    - downloadinstall cdr
+    - downloadinstall conferences
+    - downloadinstall customappsreg
+    - downloadinstall dashboard
+    - downloadinstall extensions
+    - downloadinstall featurecodeadmin
+    - downloadinstall findmefollow
+    - downloadinstall framework
+    - downloadinstall infoservices
+    - downloadinstall ivr
+    - downloadinstall languages
+    - downloadinstall logfiles
+    - downloadinstall music
+    - downloadinstall parking
+    - downloadinstall queues
+    - downloadinstall ringgroups
+    - downloadinstall sipsettings
+    - downloadinstall soundlang
+    - downloadinstall timeconditions
+    - downloadinstall voicemail
+  register: fwconsole_ma
+  changed_when: "'downloading' in fwconsole_ma.stdout or 'installing' in fwconsole_ma.stdout"
+  failed_when: fwconsole_ma.rc != 0
+
+- name: Reload FreePBX configuration
+  ansible.builtin.command:
+    cmd: fwconsole reload
+  register: fwconsole_reload
+  changed_when: "'Reload Completed' in fwconsole_reload.stdout"
+  failed_when: fwconsole_reload.rc != 0
+
+- name: Restart Asterisk via fwconsole (handles Asterisk restart correctly)
+  ansible.builtin.command:
+    cmd: fwconsole restart
+  register: fwconsole_restart
+  changed_when: "'Asterisk Started' in fwconsole_restart.stdout"
+  failed_when: fwconsole_restart.rc != 0
+
+- name: Create FreePBX Startup service file from template
+  ansible.builtin.template:
     src: freepbx.service.j2
     dest: /etc/systemd/system/freepbx.service
--
-  name: Enable FreePBX Service
-  service:
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and ensure FreePBX service is started (via fwconsole)
+  ansible.builtin.systemd:
     name: freepbx.service
     enabled: yes
--
-  name: Set hostname
-  hostname:
-    name: fpbx.local
--
-  name: Reboot host
-  reboot:
+    state: started
+    daemon_reload: yes
