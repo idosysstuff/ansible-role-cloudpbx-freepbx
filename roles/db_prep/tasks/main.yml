@@ -5,6 +5,12 @@
     state: started
     enabled: yes
 
+- name: Wait for MariaDB socket to become available
+  ansible.builtin.wait_for:
+    path: /var/run/mysqld/mysqld.sock
+    state: present
+    timeout: 30
+
 - name: Change DB listener from localhost to all interfaces (0.0.0.0)
   ansible.builtin.lineinfile:
     path: /etc/mysql/mariadb.conf.d/50-server.cnf
@@ -18,23 +24,27 @@
     path: /etc/mysql/mariadb.conf.d/50-server.cnf
     block: |
       [mysqld]
-      # Set a less strict SQL mode compatible with FreePBX/Asterisk
-      # Example: Remove STRICT_TRANS_TABLES, NO_ZERO_IN_DATE, NO_ZERO_DATE if they cause issues
-      # Check FreePBX/Asterisk docs for recommended modes if defaults cause problems
-      # Setting it empty might be too permissive, consider specific modes needed.
-      # sql_mode='ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' # Example
-      sql_mode='' # Original setting - use with caution, check compatibility
-    marker: "# {mark} ANSIBLE MANAGED BLOCK sql_mode"
+
+      sql_mode=''
+    marker: "
     insertafter: '^\[mysqld\]'
   notify: Restart mariadb
 
-- name: Set MariaDB root password for localhost access
-  community.mysql.mysql_user:
+
+- name: Set MariaDB root password for localhost access using SQL query (ALTER USER)
+  community.mysql.mysql_query:
     login_unix_socket: /var/run/mysqld/mysqld.sock
-    name: root
-    host: localhost
-    password: "{{ db_root_pass }}"
-    state: present
+    query: "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ db_root_pass }}';"
+  register: root_password_set_alter
+  changed_when: root_password_set_alter.rowcount | default(0) > 0 or root_password_set_alter.query_affected_rows | default(0) > 0
+
+
+- name: Flush MariaDB privileges after setting root password
+  community.mysql.mysql_query:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    query: "FLUSH PRIVILEGES;"
+  when: root_password_set_alter.changed
+
 
 - name: Remove anonymous MariaDB users
   community.mysql.mysql_user:
@@ -65,5 +75,6 @@
     name: "{{ db_fpbx_user }}"
     password: "{{ db_fpbx_pass }}"
     host: localhost
-    priv: "asteriskcdrdb.*:ALL/freepbx.*:ALL"
+
+    priv: "asteriskcdrdb.*:ALL/asterisk.*:ALL"
     state: present
