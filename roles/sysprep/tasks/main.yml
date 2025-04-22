@@ -1,38 +1,127 @@
 ---
--
-  name: "Add NodeJS Repo"
-  shell: curl -sL https://deb.nodesource.com/setup_{{nodejs_ver}}.x | sudo -E bash - > /tmp/node.log
-  args:
-    creates: /tmp/node.log
-- name: Add PHP repo
-  apt_repository:
-    validate_certs: no
-    repo: 'ppa:ondrej/php'
+- name: Install prerequisites for adding repositories (gnupg, apt-transport-https, curl)
+  ansible.builtin.apt:
+    name:
+      - gnupg
+      - apt-transport-https
+      - ca-certificates
+      - curl
     state: present
--
-  name: "Updating System"
-  apt:
-    upgrade: full
     update_cache: yes
--
-  name: Installing Packages
-  apt:
-    name: "{{packages}}"
+
+- name: Define PHP PPA paths
+  ansible.builtin.set_fact:
+    php_ppa_keyring: /usr/share/keyrings/php-sury.gpg
+    php_ppa_list_file: /etc/apt/sources.list.d/ondrej-php.list
+
+- name: Remove existing PHP PPA list file to prevent duplicates
+  ansible.builtin.file:
+    path: "{{ php_ppa_list_file }}"
+    state: absent
+
+- name: Download PHP PPA GPG key
+  ansible.builtin.get_url:
+    url: https://packages.sury.org/php/apt.gpg
+    dest: "{{ php_ppa_keyring }}.asc"
+    mode: "0644"
+  register: php_key_download
+  until: php_key_download is succeeded
+  retries: 3
+  delay: 5
+
+- name: De-armor PHP PPA GPG key
+  ansible.builtin.command:
+    cmd: "gpg --dearmor --batch --yes -o {{ php_ppa_keyring }} {{ php_ppa_keyring }}.asc"
+    creates: "{{ php_ppa_keyring }}"
+  when: php_key_download is succeeded
+
+- name: Remove temporary ASCII PHP PPA key
+  ansible.builtin.file:
+    path: "{{ php_ppa_keyring }}.asc"
+    state: absent
+  when: php_key_download is succeeded
+
+- name: Add PHP PPA repository (Ondrej Sury - supports Debian) with signed-by
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by={{ php_ppa_keyring }}] https://packages.sury.org/php/ {{ ansible_distribution_release }} main"
     state: present
--
-  name: Set swappiness
-  lineinfile:
-    path: /etc/sysctl.conf
-    line: vm.swappiness=10
-    backup: yes
+    filename: ondrej-php
+    update_cache: no
+  when: php_key_download is succeeded
+
+- name: Define NodeJS setup script path
+  ansible.builtin.set_fact:
+    nodejs_setup_script: "/tmp/nodesource_setup_{{ nodejs_ver }}.x.sh"
+
+- name: Download NodeJS setup script (Node {{ nodejs_ver }}.x)
+  ansible.builtin.get_url:
+    url: "https://deb.nodesource.com/setup_{{ nodejs_ver }}.x"
+    dest: "{{ nodejs_setup_script }}"
+    mode: "0755"
+  register: node_script_download
+  until: node_script_download is succeeded
+  retries: 3
+  delay: 5
+
+- name: Execute NodeJS setup script
+  ansible.builtin.command:
+    cmd: "bash {{ nodejs_setup_script }}"
+
+    creates: /etc/apt/sources.list.d/nodesource.list
+  when: node_script_download is succeeded
+  register: node_script_run
+  changed_when: node_script_run.rc == 0 and "#
+
+- name: Remove NodeJS setup script after execution
+  ansible.builtin.file:
+    path: "{{ nodejs_setup_script }}"
+    state: absent
+  when: node_script_download is succeeded
+
+- name: Update apt cache after adding all repositories
+  ansible.builtin.apt:
+    update_cache: yes
+  register: apt_update_result
+  retries: 5
+  delay: 10
+  until: apt_update_result is succeeded
+
+- name: Perform full system upgrade
+  ansible.builtin.apt:
+    upgrade: full
+    cache_valid_time: 3600
+
+- name: Install required system packages (including nodejs)
+  ansible.builtin.apt:
+    name: "{{ packages }}"
     state: present
-- 
-  name: Set php8.2 version for cli
-  shell: "{{item}}"
-  with_items:
-    - update-alternatives --set php /usr/bin/php8.2 
-    - update-alternatives --set phar /usr/bin/phar8.2 
-    - update-alternatives --set phar.phar /usr/bin/phar.phar8.2
--
-  name: Reboot host
-  reboot:
+    install_recommends: yes
+
+- name: Create the 'asterisk' system user and group
+  ansible.builtin.user:
+    name: asterisk
+    comment: "Asterisk User"
+    system: yes
+    create_home: no
+    group: asterisk
+    shell: /sbin/nologin
+
+- name: Add apache user to asterisk group (for FreePBX web UI access)
+  ansible.builtin.user:
+    name: www-data
+    groups: asterisk
+    append: yes
+
+- name: Set swappiness to 10 (reduce swap usage)
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "10"
+    sysctl_file: /etc/sysctl.conf
+    reload: yes
+    state: present
+
+- name: Set default PHP CLI version to 8.2
+  community.general.alternatives:
+    name: php
+    path: /usr/bin/php8.2
+    link: /usr/bin/php
