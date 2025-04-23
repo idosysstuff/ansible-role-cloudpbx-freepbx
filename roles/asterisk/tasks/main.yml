@@ -49,8 +49,10 @@
   ansible.builtin.command:
     cmd: ./configure --with-jansson-bundled --with-pjproject-bundled
     chdir: "{{ actual_asterisk_src_dir }}"
-    creates: "{{ actual_asterisk_src_dir }}/Makefile"
+
   when: actual_asterisk_src_dir is defined
+  register: configure_run
+  changed_when: configure_run.rc == 0
 
 - name: Generate initial menuselect options file (make menuselect.makeopts)
   ansible.builtin.command:
