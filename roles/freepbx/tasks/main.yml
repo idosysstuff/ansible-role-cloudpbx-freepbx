@@ -35,9 +35,9 @@
     daemon_reload: yes
   register: asterisk_service_start
 
-- name: Wait a few seconds for Asterisk to initialize fully
+- name: Wait for Asterisk to initialize fully (increased delay)
   ansible.builtin.pause:
-    seconds: 10
+    seconds: 20
   when: asterisk_service_start.changed
 
 - name: Check Asterisk process owner
@@ -47,13 +47,31 @@
   failed_when: "'asterisk' not in asterisk_process_owner.stdout"
   when: asterisk_service_start.changed
 
-- name: Wait for Asterisk Manager Interface (AMI) to be available
+  ignore_errors: true
+
+- name: Re-Check Asterisk process owner after potential PID file delay
+  ansible.builtin.shell: ps -o user= -p $(cat /var/run/asterisk/asterisk.pid) | head -n 1
+  register: asterisk_process_owner_retry
+  changed_when: false
+  failed_when: "'asterisk' not in asterisk_process_owner_retry.stdout"
+  when: asterisk_service_start.changed and asterisk_process_owner is failed
+
+- name: Wait for Asterisk Manager Interface (AMI) on port 5038
   ansible.builtin.wait_for:
     port: 5038
     host: 127.0.0.1
     delay: 5
-    timeout: 30
-  when: asterisk_service_start.changed
+    timeout: 60
+
+- name: Check if manager.conf exists
+  ansible.builtin.stat:
+    path: /etc/asterisk/manager.conf
+  register: manager_conf_stat
+
+- name: Fail if manager.conf does not exist
+  ansible.builtin.fail:
+    msg: "/etc/asterisk/manager.conf not found. Asterisk 'make samples' might have failed or file was removed."
+  when: not manager_conf_stat.stat.exists
 
 - name: Create potentially required empty Asterisk config files
   ansible.builtin.file:
