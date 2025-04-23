@@ -1,11 +1,9 @@
 ---
-
-
 - name: Download FreePBX tarball ({{ fpbx_ver }})
   ansible.builtin.get_url:
     url: "http://mirror.freepbx.org/modules/packages/freepbx/freepbx-{{ fpbx_ver }}-latest.tgz"
     dest: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
-    mode: '0644'
+    mode: "0644"
   register: download_result
   until: download_result is succeeded
   retries: 3
@@ -15,7 +13,7 @@
   ansible.builtin.file:
     path: /usr/src/freepbx
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Unpack FreePBX tarball
   ansible.builtin.unarchive:
@@ -29,68 +27,33 @@
     path: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     state: absent
 
-
-
-- name: Ensure AMI is enabled and listening in manager.conf
-  ansible.builtin.blockinfile:
-    path: /etc/asterisk/manager.conf
-    block: |
-      [general]
-      enabled = yes
-      webenabled = yes ; Optional: if needed for Web AMI later
-      port = 5038
-      bindaddr = 0.0.0.0 ; Listen on all interfaces, or use 127.0.0.1 if preferred
-      ; Add a temporary admin user for testing connection if needed, though wait_for only checks port
-      ; [admin]
-      ; secret = temp_password
-      ; read = system,call,log,verbose,command,agent,user,config,command,dtmf,reporting,cdr,dialplan,originate
-      ; write = system,call,log,verbose,command,agent,user,config,command,dtmf,reporting,cdr,dialplan,originate
-    marker: "
-    create: yes
-    owner: asterisk
-    group: asterisk
-    mode: '0640'
-  notify: Reload asterisk
-
-
-- name: Ensure Asterisk service (systemd) is stopped before using start_asterisk script
+- name: Ensure Asterisk service is started via systemd
   ansible.builtin.systemd:
     name: asterisk
-    state: stopped
-  ignore_errors: true
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  register: asterisk_service_start
 
-- name: Start Asterisk using the FreePBX start_asterisk script
-  ansible.builtin.command:
-    cmd: ./start_asterisk start
-    chdir: /usr/src/freepbx
+- name: Wait a few seconds for Asterisk to initialize fully
+  ansible.builtin.pause:
+    seconds: 10
+  when: asterisk_service_start.changed
 
-  become: yes
-  become_user: asterisk
-  register: start_asterisk_script_run
-  changed_when: "'Asterisk Started' in start_asterisk_script_run.stdout"
-  failed_when: start_asterisk_script_run.rc != 0
-
-- name: Debug Show Asterisk processes after start script
-  ansible.builtin.command:
-    cmd: ps aux | grep asterisk
-  register: ps_asterisk
+- name: Check Asterisk process owner
+  ansible.builtin.shell: ps -o user= -p $(cat /var/run/asterisk/asterisk.pid) | head -n 1
+  register: asterisk_process_owner
   changed_when: false
-  when: start_asterisk_script_run is succeeded
-
-- name: Debug Print Asterisk process list
-  ansible.builtin.debug:
-    var: ps_asterisk.stdout_lines
-  when: start_asterisk_script_run is succeeded
-
+  failed_when: "'asterisk' not in asterisk_process_owner.stdout"
+  when: asterisk_service_start.changed
 
 - name: Wait for Asterisk Manager Interface (AMI) to be available
   ansible.builtin.wait_for:
     port: 5038
     host: 127.0.0.1
-    delay: 10
-    timeout: 60
-  when: start_asterisk_script_run.changed
-
+    delay: 5
+    timeout: 30
+  when: asterisk_service_start.changed
 
 - name: Create potentially required empty Asterisk config files
   ansible.builtin.file:
@@ -98,7 +61,7 @@
     state: touch
     owner: asterisk
     group: asterisk
-    mode: '0664'
+    mode: "0664"
   with_items:
     - modules.conf
     - cdr.conf
@@ -109,6 +72,7 @@
     chdir: /usr/src/freepbx
     creates: /etc/freepbx.conf
   register: fpbx_install_result
+
   failed_when: fpbx_install_result.rc != 0 and 'Successfully created Asterisk Manager user' not in fpbx_install_result.stdout
 
 - name: Set ownership and permissions using fwconsole chown
@@ -180,7 +144,7 @@
     dest: /etc/systemd/system/freepbx.service
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   notify: Reload systemd
 
 - name: Enable and ensure FreePBX service is started (via fwconsole)
