@@ -27,10 +27,12 @@
     path: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     state: absent
 
-- name: Ensure Asterisk service is running before FreePBX install
+- name: Ensure Asterisk service is stopped before FreePBX install
   ansible.builtin.systemd:
     name: asterisk
-    state: started
+    state: stopped
+
+  ignore_errors: true
 
 - name: Create potentially required empty Asterisk config files
   ansible.builtin.file:
@@ -49,11 +51,13 @@
     chdir: /usr/src/freepbx
     creates: /etc/freepbx.conf
   register: fpbx_install_result
-  failed_when: "'INSERT INTO notifications' not in fpbx_install_result.stdout and fpbx_install_result.rc != 0"
 
-- name: Set ownership and permissions using fwconsole
+  failed_when: fpbx_install_result.rc != 0 and 'Successfully created Asterisk Manager user' not in fpbx_install_result.stdout
+
+- name: Set ownership and permissions using fwconsole chown
   ansible.builtin.command:
     cmd: fwconsole chown
+
   register: fwconsole_chown
   changed_when: "'Taking too long? Customize the chown command' in fwconsole_chown.stdout"
   failed_when: fwconsole_chown.rc != 0
@@ -69,9 +73,11 @@
     - downloadinstall sysadmin
     - downloadinstall userman
     - downloadinstall pm2
+
     - downloadinstall certman
     - downloadinstall api
     - downloadinstall ucp
+
     - downloadinstall announcements
     - downloadinstall backup
     - downloadinstall blacklist
