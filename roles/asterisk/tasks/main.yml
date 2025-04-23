@@ -70,7 +70,7 @@
       --enable CORE-SOUNDS-EN-ULAW
       --enable MOH-OPSOUND-ULAW
       --enable EXTRA-SOUNDS-EN-ULAW
-      --enable app_macro
+
       --enable format_mp3
       --enable res_config_odbc
       --enable res_odbc
@@ -86,7 +86,7 @@
       --enable res_srtp
       --enable codec_opus
       --disable BUILD_NATIVE
-      --force
+
     chdir: "{{ actual_asterisk_src_dir }}"
   when: actual_asterisk_src_dir is defined
 
