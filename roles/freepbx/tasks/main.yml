@@ -27,12 +27,27 @@
     path: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     state: absent
 
-- name: Ensure Asterisk service is stopped before FreePBX install
+- name: Ensure Asterisk service (systemd) is stopped before using start_asterisk script
   ansible.builtin.systemd:
     name: asterisk
     state: stopped
-
   ignore_errors: true
+
+- name: Start Asterisk using the FreePBX start_asterisk script
+  ansible.builtin.command:
+    cmd: ./start_asterisk start
+    chdir: /usr/src/freepbx
+  register: start_asterisk_script_run
+  changed_when: "'Asterisk Started' in start_asterisk_script_run.stdout"
+  failed_when: start_asterisk_script_run.rc != 0
+
+- name: Wait for Asterisk Manager Interface (AMI) to be available
+  ansible.builtin.wait_for:
+    port: 5038
+    host: 127.0.0.1
+    delay: 5
+    timeout: 30
+  when: start_asterisk_script_run.changed
 
 - name: Create potentially required empty Asterisk config files
   ansible.builtin.file:
