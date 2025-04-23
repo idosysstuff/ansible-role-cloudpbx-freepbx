@@ -93,6 +93,18 @@
   register: menuselect_script_run
   changed_when: menuselect_script_run.rc == 0
 
+- name: Download MP3 sources required by format_mp3
+  ansible.builtin.command:
+    cmd: contrib/scripts/get_mp3_source.sh
+    chdir: "{{ actual_asterisk_src_dir }}"
+
+    creates: "{{ actual_asterisk_src_dir }}/addons/mp3"
+  when:
+    - actual_asterisk_src_dir is defined
+
+  register: get_mp3_run
+  changed_when: get_mp3_run.rc == 0 and "Source is already present" not in get_mp3_run.stdout
+
 - name: Compile Asterisk (make)
   ansible.builtin.command:
     cmd: make -j {{ ansible_processor_vcpus | default(2) }}
