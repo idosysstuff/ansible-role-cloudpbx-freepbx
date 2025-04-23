@@ -27,7 +27,7 @@
     path: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     state: absent
 
-- name: Ensure Asterisk service is started via systemd
+- name: Ensure Asterisk service is started before FreePBX install
   ansible.builtin.systemd:
     name: asterisk
     state: started

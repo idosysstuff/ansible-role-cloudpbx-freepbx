@@ -29,7 +29,6 @@
 - name: Find the extracted Asterisk source directory
   ansible.builtin.find:
     paths: /usr/src
-
     patterns: "asterisk-{{ asterisk_version }}.*"
     file_type: directory
   register: find_asterisk_dir
@@ -49,7 +48,6 @@
   ansible.builtin.command:
     cmd: ./configure --with-jansson-bundled --with-pjproject-bundled
     chdir: "{{ actual_asterisk_src_dir }}"
-
   when: actual_asterisk_src_dir is defined
   register: configure_run
   changed_when: configure_run.rc == 0
@@ -58,7 +56,6 @@
   ansible.builtin.command:
     cmd: make menuselect.makeopts
     chdir: "{{ actual_asterisk_src_dir }}"
-
     creates: "{{ actual_asterisk_src_dir }}/menuselect.makeopts"
   when: actual_asterisk_src_dir is defined
   changed_when: false
@@ -67,29 +64,15 @@
   ansible.builtin.command:
     cmd: >
       menuselect/menuselect
-      --enable CORE-SOUNDS-EN-ULAW
-      --enable MOH-OPSOUND-ULAW
-      --enable EXTRA-SOUNDS-EN-ULAW
-
-      --enable format_mp3
-      --enable res_config_odbc
-      --enable res_odbc
-      --enable cdr_adaptive_odbc
-      --enable cel_odbc
-      --enable res_calendar_caldav
-      --enable res_calendar_ews
-      --enable res_calendar_icalendar
-      --enable res_crypto
-      --enable res_http_websocket
-      --enable res_pjsip_pubsub
-      --enable res_pjsip_transport_websocket
-      --enable res_srtp
-      --enable codec_opus
+      --enable CORE-SOUNDS-EN-ULAW --enable MOH-OPSOUND-ULAW --enable EXTRA-SOUNDS-EN-ULAW
+      --enable format_mp3 --enable res_config_odbc --enable res_odbc
+      --enable cdr_adaptive_odbc --enable cel_odbc --enable res_calendar_caldav
+      --enable res_calendar_ews --enable res_calendar_icalendar --enable res_crypto
+      --enable res_http_websocket --enable res_pjsip_pubsub
+      --enable res_pjsip_transport_websocket --enable res_srtp --enable codec_opus
       --disable BUILD_NATIVE
-
     chdir: "{{ actual_asterisk_src_dir }}"
   when: actual_asterisk_src_dir is defined
-
   register: menuselect_script_run
   changed_when: menuselect_script_run.rc == 0
 
@@ -97,11 +80,8 @@
   ansible.builtin.command:
     cmd: contrib/scripts/get_mp3_source.sh
     chdir: "{{ actual_asterisk_src_dir }}"
-
     creates: "{{ actual_asterisk_src_dir }}/addons/mp3"
-  when:
-    - actual_asterisk_src_dir is defined
-
+  when: actual_asterisk_src_dir is defined
   register: get_mp3_run
   changed_when: get_mp3_run.rc == 0 and "Source is already present" not in get_mp3_run.stdout
 
@@ -126,12 +106,17 @@
     creates: /etc/asterisk/asterisk.conf.sample
   when: actual_asterisk_src_dir is defined
 
-- name: Install Asterisk init scripts/systemd unit (make config)
-  ansible.builtin.command:
-    cmd: make config
-    chdir: "{{ actual_asterisk_src_dir }}"
-    creates: /lib/systemd/system/asterisk.service
-  when: actual_asterisk_src_dir is defined
+- name: Create Asterisk systemd service unit from template
+  ansible.builtin.template:
+    src: asterisk.service.j2
+    dest: /etc/systemd/system/asterisk.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Flush handlers to apply systemd unit changes
+  meta: flush_handlers
 
 - name: Set ownership for Asterisk directories
   ansible.builtin.file:
@@ -176,4 +161,3 @@
     name: asterisk
     enabled: yes
     state: started
-    daemon_reload: yes

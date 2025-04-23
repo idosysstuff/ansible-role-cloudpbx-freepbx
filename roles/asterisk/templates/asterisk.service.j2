@@ -1,0 +1,17 @@
+[Unit]
+Description=Asterisk PBX and Telephony Daemon
+After=network.target mariadb.service
+Wants=network.target
+
+[Service]
+User=asterisk
+Group=asterisk
+Environment=HOME=/var/lib/asterisk
+WorkingDirectory=/var/lib/asterisk
+Type=simple
+ExecStart=/usr/sbin/asterisk -f -C /etc/asterisk/asterisk.conf
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
