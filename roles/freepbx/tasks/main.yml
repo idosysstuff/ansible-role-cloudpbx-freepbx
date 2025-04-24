@@ -27,7 +27,6 @@
     path: "/usr/src/freepbx-{{ fpbx_ver }}-latest.tgz"
     state: absent
 
-
 - name: Ensure Asterisk service is started before FreePBX install
   ansible.builtin.systemd:
     name: asterisk
@@ -35,7 +34,6 @@
     enabled: yes
     daemon_reload: yes
   register: asterisk_service_start
-
 
 - name: Wait for Asterisk to initialize fully (increased delay)
   ansible.builtin.pause:
@@ -57,7 +55,6 @@
   failed_when: "'asterisk' not in asterisk_process_owner_retry.stdout"
   when: asterisk_service_start.changed and asterisk_process_owner is failed
 
-
 - name: Ensure manager.conf exists (basic check)
   ansible.builtin.stat:
     path: /etc/asterisk/manager.conf
@@ -68,21 +65,33 @@
     msg: "/etc/asterisk/manager.conf not found. Asterisk 'make samples' might have failed or file was removed."
   when: not manager_conf_stat.stat.exists
 
-- name: Configure basic AMI settings in manager.conf
-  ansible.builtin.blockinfile:
+- name: Ensure AMI is enabled in manager.conf [general] section
+  ansible.builtin.lineinfile:
     path: /etc/asterisk/manager.conf
-    block: |
-      [general]
-      enabled = yes
-      bindaddr = 127.0.0.1 ; Or 0.0.0.0 if needed for external access later
-      ; port = 5038 ; Default port
-    marker: "
-    create: yes
+
+    regexp: '^\s*enabled\s*='
+
+    line: "enabled = yes"
+    insertafter: '\[general\]'
     owner: asterisk
     group: asterisk
     mode: "0640"
+    backrefs: yes
+    state: present
   notify: Reload asterisk
 
+- name: Ensure AMI bind address is set in manager.conf [general] section
+  ansible.builtin.lineinfile:
+    path: /etc/asterisk/manager.conf
+    regexp: '^\s*bindaddr\s*='
+    line: "bindaddr = 127.0.0.1"
+    insertafter: '^\s*enabled\s*=\s*yes'
+    owner: asterisk
+    group: asterisk
+    mode: "0640"
+    backrefs: yes
+    state: present
+  notify: Reload asterisk
 
 - name: Flush handlers to apply manager.conf changes
   meta: flush_handlers
@@ -93,8 +102,6 @@
     host: 127.0.0.1
     delay: 5
     timeout: 60
-
-
 
 - name: Create potentially required empty Asterisk config files
   ansible.builtin.file:
@@ -107,17 +114,14 @@
     - modules.conf
     - cdr.conf
 
-
 - name: Run FreePBX installation script
   ansible.builtin.command:
-
     cmd: ./install -n --dbhost localhost --dbuser {{ db_fpbx_user }} --dbpass {{ db_fpbx_pass }} --dbname asterisk --cdrdbname asteriskcdrdb --dbport 3306 --user asterisk --group asterisk
     chdir: /usr/src/freepbx
     creates: /etc/freepbx.conf
   register: fpbx_install_result
 
   failed_when: fpbx_install_result.rc != 0 and 'Successfully created Asterisk Manager user' not in fpbx_install_result.stdout
-
 
 - name: Set ownership and permissions using fwconsole chown
   ansible.builtin.command:
