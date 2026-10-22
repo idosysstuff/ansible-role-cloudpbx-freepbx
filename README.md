@@ -6,6 +6,6 @@ This playbook installs FreePBX v16 on the Ubuntu 22.04LTS minimal server.
 
 ## Usage
 * Set your database password with `export DB_ROOT_PASS='<your_password>'`
-* Run the playbook. Example: `ansible-playbook -i 172.18.223.4, -u ubuntu cloudpbx-freepbx.yaml`
+* Run the playbook. Example: `ansible-playbook -i 172.18.223.17, -u ubuntu -k -K cloudpbx-freepbx.yaml`
 
 After playbook completes, you server IP should have FreePBX web service running
