@@ -18,5 +18,5 @@ After playbook completes, you server IP should have FreePBX web service running
 
 ## What else gets configured
 * FreePBX update settings: no automatic module upgrades and no update mails. FreePBX rebuilds the asterisk crontab from these settings on every reload, so do not edit those cron lines by hand. Change `fpbx_auto_module_updates`, `fpbx_auto_security_updates` or `fpbx_notification_email` in the playbook instead.
-* Monitoring: prometheus-node-exporter (port 9100), mysqld_exporter (port 9104) and promtail shipping `/var/log/asterisk/full` to Loki
+* Monitoring: prometheus-node-exporter (port 9100), mysqld_exporter (port 9104) and promtail shipping `/var/log/asterisk/full` to Loki. The exporters listen only on the server IP of the default route (`monitoring_host_ip`); promtail's own ports listen only on 127.0.0.1
 * Backups are not configured; set them up in the FreePBX Backup module after install

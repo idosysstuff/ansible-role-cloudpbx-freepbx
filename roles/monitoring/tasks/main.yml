@@ -4,6 +4,34 @@
     name: prometheus-node-exporter
     state: present
 
+# Listen only on the private IP Prometheus scrapes
+- name: Set node exporter listen address
+  ansible.builtin.lineinfile:
+    path: /etc/default/prometheus-node-exporter
+    regexp: '^ARGS='
+    line: ARGS="--web.listen-address={{ monitoring_host_ip }}:9100"
+  notify: Restart node exporter
+
+- name: Create node exporter service override folder
+  ansible.builtin.file:
+    path: /etc/systemd/system/prometheus-node-exporter.service.d
+    state: directory
+    mode: '0755'
+
+# The listen IP must exist before start, so wait for the network and retry slowly
+- name: Create node exporter service override
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/prometheus-node-exporter.service.d/override.conf
+    content: |
+      [Unit]
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      RestartSec=5
+    mode: '0644'
+  notify: Restart node exporter
+
 - name: Enable node exporter
   ansible.builtin.service:
     name: prometheus-node-exporter

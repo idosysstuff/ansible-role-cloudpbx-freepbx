@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 User=mysqld_exporter
-ExecStart=/usr/local/bin/mysqld_exporter --config.my-cnf=/etc/mysqld_exporter/my.cnf
+ExecStart=/usr/local/bin/mysqld_exporter --config.my-cnf=/etc/mysqld_exporter/my.cnf --web.listen-address={{ monitoring_host_ip }}:9104
 Restart=on-failure
 RestartSec=5
 
