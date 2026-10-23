@@ -6,6 +6,7 @@ This playbook installs FreePBX v16 on the Ubuntu 22.04LTS or 24.04LTS minimal se
 * Ubuntu 26.04 is not supported: FreePBX 16 needs PHP 7.4, which the ondrej/php PPA does not build for 26.04
 
 ## Usage
+* Install the required collections: `ansible-galaxy collection install -r requirements.yml`
 * Run the playbook. Example: `ansible-playbook -i 172.18.223.4, -u ubuntu cloudpbx-freepbx.yaml`
 * It asks for:
   * customer name: the hostname becomes `<name>-pbx.cloudpbx.rs`

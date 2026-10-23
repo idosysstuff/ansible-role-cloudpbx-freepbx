@@ -27,7 +27,7 @@ packages:
   - libnewt-dev
   - sqlite3
   - libsqlite3-dev
-  - pkg-config
+  - pkgconf
   - automake
   - libtool
   - autoconf

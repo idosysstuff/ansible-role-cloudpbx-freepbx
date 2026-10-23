@@ -104,19 +104,33 @@
     deb: /usr/src/promtail_{{ promtail_ver }}_{{ monitoring_arch }}.deb
   notify: Restart promtail
 
-# Read access to /var/log/asterisk/full
-- name: Add promtail user to asterisk group
-  ansible.builtin.user:
-    name: promtail
-    groups: asterisk
-    append: true
+# Read-only ACL on the Asterisk logs; the asterisk group could also write
+# /etc/asterisk and read /etc/freepbx.conf
+- name: Install acl tools
+  ansible.builtin.apt:
+    name: acl
+    state: present
+
+- name: Allow promtail to read Asterisk logs
+  ansible.posix.acl:
+    path: "{{ item.path }}"
+    entity: promtail
+    etype: user
+    permissions: "{{ item.permissions }}"
+    default: "{{ item.default }}"
+    state: present
+  with_items:
+    - {path: /var/log/asterisk, permissions: rx, default: false}
+    # Inherited by files logrotate and Asterisk create later
+    - {path: /var/log/asterisk, permissions: r, default: true}
+    - {path: /var/log/asterisk/full, permissions: r, default: false}
   notify: Restart promtail
 
 - name: Create promtail state folder
   ansible.builtin.file:
     path: /var/lib/promtail
     owner: promtail
-    group: promtail
+    group: root
     mode: '0750'
     state: directory
 
